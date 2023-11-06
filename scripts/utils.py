@@ -1,6 +1,8 @@
 import os
 import getpass
-
+import shutil
+import tempfile
+import contextlib
 
 def find_aseprite():
     possible_paths = []
@@ -34,3 +36,11 @@ def find_aseprite():
             return path
 
     return None
+
+@contextlib.contextmanager
+def make_temp_directory():
+    tempDirectory = tempfile.mkdtemp()
+    try:
+        yield tempDirectory
+    finally:
+        shutil.rmtree(tempDirectory)

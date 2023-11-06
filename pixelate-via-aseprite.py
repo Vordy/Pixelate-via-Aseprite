@@ -14,16 +14,14 @@
 # Creates a directory for each downscale factor in the output directory
 
 import os
-import subprocess
 import sys
 import configparser
 import shutil
 import time
 
-from scripts.utils import find_aseprite
+from subprocess import run
 
-# Record time start
-startTime = time.time()
+from scripts.utils import find_aseprite, make_temp_directory
 
 # Check arguments
 if len(sys.argv) < 2:
@@ -130,18 +128,6 @@ if (
         config.write(configFile)
         configFile.close()
 
-# Configuration complete, welcome message
-print("Pixelate-via-Aseprite")
-print("By Vordy")
-print("")
-print("Aseprite path: " + asepritePath)
-print("Input directory: " + inputDirectory)
-print("Output directory: " + outputDirectory)
-print("Downscale factors: " + ", ".join(downscaleFactors))
-print("")
-print("Press enter to continue...")
-input()
-
 # Get list of files in input directory (e.g. "Landscape/<image>.png")
 fileList = []
 files = os.listdir(inputDirectory)
@@ -154,61 +140,122 @@ for item in files:
     if os.path.isdir(os.path.join(inputDirectory, item)):
         for subitem in os.listdir(os.path.join(inputDirectory, item)):
             file = os.path.join(item, subitem)
+            
+            # Check for image file extension
+            if file.endswith((".png", ".jpg", ".jpeg")):
+                fileList.append(file)
     else:
         file = item
 
     # Check for image file extension
-    if file.endswith(".png" or ".jpg" or ".jpeg"):
+    if file.endswith((".png", ".jpg", ".jpeg")):
         fileList.append(file)
 
-# Pixelate each file
-for file in fileList:
-    print("Pixelating " + file + "... ")
+# Set up temp directory
+with make_temp_directory() as tempDirectory:
 
-    # Pixelate each downscale factor
-    for factor in downscaleFactors:
-        print("\tFactor: " + factor + "... ")
+    # Configuration/setup complete, welcome message
+    print("Pixelate-via-Aseprite")
+    print("By Vordy")
+    print("")
+    print("Aseprite path: " + asepritePath)
+    print("Temp directory: " + tempDirectory)
+    print("Input directory: " + inputDirectory)
+    print("Output directory: " + outputDirectory)
+    print("Downscale factors: " + ", ".join(downscaleFactors))
+    print("")
 
-        # Copy file to output directory
-        shutil.copy(
-            os.path.join(inputDirectory, file),
-            os.path.join(outputDirectory, factor, file),
-        )
+    # Create multiple columns for file list
+    columnWidth = 35
+    columnCount = 0
+    terminal_size = shutil.get_terminal_size((80, 20))
+    columns = terminal_size.columns // (columnWidth + 3)
 
-        result = subprocess.run(
-            [
-                asepritePath,
-                "-b",
-                "-script-param",
-                f"file={os.path.abspath(os.path.join(outputDirectory, factor, file))}",
-                "-script-param",
-                f"factor={factor}",
-                "-script",
-                os.path.join(os.path.dirname(__file__), "pva-process.lua"),
-                os.path.abspath(os.path.join(outputDirectory, factor, file)),
-                # "--save-as",
-                # os.path.abspath(
-                #     os.path.join(
-                #         outputDirectory,
-                #         factor,
-                #         ".aseprite",
-                #         os.path.splitext(file)[0] + ".ase",
-                #     )
-                # ),
-            ],
-            capture_output=True,
-            text=True,
-        )
+    # Print file list
+    print("Files:")
+    separator = " | "
+    for file in fileList:
+        if columnCount == columns:
+            print("")
+            columnCount = 0
 
-        print(result.stdout)
-        print(result.stderr)
+        truncated_file = file[:columnWidth-3] + "..." if len(file) > columnWidth else file.ljust(columnWidth)
+        print(truncated_file, end="")
+        columnCount += 1
+        if columnCount != 0:
+            print(separator, end="")
 
+    print("")
+    print("")
 
-# Record time end
-endTime = time.time()
-elapsedTime = round(endTime - startTime, 2)
-hours = int(elapsedTime // 3600)
-minutes = int((elapsedTime % 3600) // 60)
-seconds = int(elapsedTime % 60)
+    # Confirm before continuing
+    print("Will pixelate " + str(len(fileList)) + " files.")
+    print("")
+    print("Press enter to continue...")
+    input()
 
-print(f"Time elapsed: {hours} hours, {minutes} minutes, {seconds} seconds")
+    # Record time start
+    startTime = time.time()
+
+    # Pixelate each file
+    for file in fileList:
+        print("Pixelating " + file + "... ")
+
+        # Pixelate each downscale factor
+        for factor in downscaleFactors:
+            print("\tFactor: " + factor + "... ")
+
+            # Copy file to temp directory
+            filePath = os.path.join(tempDirectory, file)
+            os.makedirs(os.path.dirname(filePath), exist_ok=True)
+            shutil.copy(os.path.join(inputDirectory, file), filePath)
+
+            result = run(
+                [
+                    asepritePath,
+                    "-b",
+                    "-script-param",
+                    f"file={os.path.join(tempDirectory, file)}",
+                    "-script-param",
+                    f"factor={factor}",
+                    "-script",
+                    os.path.join(os.path.dirname(__file__), "pva-process.lua"),
+                    os.path.join(tempDirectory, file),
+                    # "--save-as",
+                    # os.path.abspath(
+                    #     os.path.join(
+                    #         outputDirectory,
+                    #         factor,
+                    #         ".aseprite",
+                    #         os.path.splitext(file)[0] + ".ase",
+                    #     )
+                    # ),
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            # Print output
+            if(result.stdout != ""):
+                print("pva-process.lua output:")
+                print(result.stdout)
+
+            # Print error
+            if(result.stderr != ""):
+                print("pva-process.lua error:")
+                print(result.stderr)
+
+            # Copy file to output directory
+            shutil.move(
+                os.path.join(tempDirectory, file),
+                os.path.join(outputDirectory, factor, file),
+            )
+
+    # Record time end
+    endTime = time.time()
+    elapsedTime = round(endTime - startTime, 2)
+    hours = int(elapsedTime // 3600)
+    minutes = int((elapsedTime % 3600) // 60)
+    seconds = int(elapsedTime % 60)
+
+    print(f"Time elapsed: {hours} hours, {minutes} minutes, {seconds} seconds")
