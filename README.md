@@ -6,8 +6,8 @@ A CLI that leverages [Aseprite](https://www.aseprite.org/) (separate install) an
 
 ## Requirements
 
-- (Aseprite)[https://www.aseprite.org/]
-- (Python 3.6+)[https://www.python.org/downloads/]
+- [Aseprite](https://www.aseprite.org/)
+- [Python 3.6+](https://www.python.org/downloads/)
 
 ## Usage
 
